@@ -1,4 +1,4 @@
-package fetcher
+package pkg
 
 import (
 	"net/http"
@@ -24,7 +24,7 @@ func TestFetcher_GetChainID(t *testing.T) {
 				return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					assert.Equal(t, "/status", r.URL.Path)
 					w.WriteHeader(http.StatusOK)
-					w.Write([]byte(testutil.MockStatusResponse("cosmoshub-4")))
+					_, _ = w.Write([]byte(testutil.MockStatusResponse("cosmoshub-4")))
 				}))
 			},
 			expected:  "cosmoshub-4",

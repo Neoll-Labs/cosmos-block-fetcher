@@ -25,3 +25,9 @@ go.work.sum
 # env file
 .env
 
+
+coverage.out
+
+cosmos-block-fetcher
+
+/cmd/blocks.json

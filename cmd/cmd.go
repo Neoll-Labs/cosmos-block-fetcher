@@ -1,14 +1,16 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
+	"github.com/neoll-labs/cosmos-block-fetcher/pkg"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
-	"github.com/neoll-labs/cosmos-block-fetcher/fetcher"
 	"github.com/neoll-labs/cosmos-block-fetcher/types"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -42,12 +44,14 @@ resilient error handling.`,
 
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		log.Error().Msgf("Error executing command: %v", err)
+
 		os.Exit(1)
 	}
 }
 
 func init() {
+	log.Info().Msg("initializing Cosmos Block Fetcher")
 	rootCmd.Flags().Uint64Var(&startHeight, "start-height", 0, "Starting block height")
 	rootCmd.Flags().Uint64Var(&endHeight, "end-height", 0, "Ending block height")
 	rootCmd.Flags().StringVar(&nodeURL, "node-url", "", "Cosmos RPC endpoint URL")
@@ -57,13 +61,33 @@ func init() {
 	rootCmd.Flags().IntVar(&retryAttempts, "retry-attempts", 3, "Number of retry attempts")
 	rootCmd.Flags().DurationVar(&retryDelay, "retry-delay", time.Second, "Delay between retries")
 
-	rootCmd.MarkFlagRequired("start-height")
-	rootCmd.MarkFlagRequired("end-height")
-	rootCmd.MarkFlagRequired("node-url")
+	_ = rootCmd.MarkFlagRequired("start-height")
+	_ = rootCmd.MarkFlagRequired("end-height")
+	_ = rootCmd.MarkFlagRequired("node-url")
+
+	// Set log level from environment variable or flag
+	logLevel := os.Getenv("LOG_LEVEL")
+	switch strings.ToLower(logLevel) {
+	case "debug":
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	case "info":
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	case "warn":
+		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	case "error":
+		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	default:
+		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	}
+
+	// Add global fields if needed
+	log.Logger = log.With().
+		Str("service", "block-fetcher").
+		Logger()
 }
 
 func fetchBlocks() error {
-	fetchr := fetcher.NewFetcher(nodeURL, retryAttempts, retryDelay)
+	fetchr := pkg.NewFetcher(nodeURL, retryAttempts, retryDelay)
 
 	chainID, err := fetchr.GetChainID()
 	if err != nil {
@@ -83,15 +107,23 @@ func fetchBlocks() error {
 	heights := make(chan uint64, parallelism)
 
 	for i := 0; i < parallelism; i++ {
+		log.Info().Msgf("starting #%d work group of %d", i, parallelism)
 		wg.Add(1)
+
 		go func() {
+
 			defer wg.Done()
 			for height := range heights {
+				log.Info().Msgf("fetch block #%d", height)
+
 				block, err := fetchr.FetchBlock(height)
 				if err != nil {
+					log.Error().Msgf("fetch block #%d error %e", height, err)
 					errors <- fmt.Errorf("failed to fetch block %d: %w", height, err)
+
 					return
 				}
+
 				results <- *block
 			}
 		}()
@@ -116,29 +148,14 @@ func fetchBlocks() error {
 		case block, ok := <-results:
 			if !ok {
 				output.Blocks = blocks
-				return writeOutput(output)
+				return pkg.WriteOutput(outputFile, output)
 			}
 			blocks = append(blocks, block)
 		case err := <-errors:
 			if err != nil {
+
 				return err
 			}
 		}
 	}
-}
-
-func writeOutput(output types.Output) error {
-	file, err := os.Create(outputFile)
-	if err != nil {
-		return fmt.Errorf("failed to create output file: %w", err)
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(output); err != nil {
-		return fmt.Errorf("failed to write output: %w", err)
-	}
-
-	return nil
 }

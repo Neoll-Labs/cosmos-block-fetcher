@@ -30,10 +30,10 @@ func TestRootCommand(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/status":
-			w.Write([]byte(testutil.MockStatusResponse("test-chain")))
+			_, _ = w.Write([]byte(testutil.MockStatusResponse("test-chain")))
 		case "/block":
 			height := r.URL.Query().Get("height")
-			w.Write([]byte(testutil.MockBlockResponse(
+			_, _ = w.Write([]byte(testutil.MockBlockResponse(
 				parseUint64(height),
 				1,
 				"2023-01-01T00:00:00Z",

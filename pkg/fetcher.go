@@ -1,8 +1,9 @@
-package fetcher
+package pkg
 
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"net/http"
 	"strconv"
 	"time"
@@ -65,6 +66,7 @@ func (f *Fetcher) fetchWithRetry(url string, target interface{}) error {
 
 	for attempt := 0; attempt <= f.retryAttempts; attempt++ {
 		if attempt > 0 {
+			log.Info().Msgf("fetcher sleeping - attemp #%d", attempt)
 			time.Sleep(f.retryDelay * time.Duration(attempt))
 		}
 
